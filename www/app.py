@@ -10,13 +10,15 @@ from jinja2 import Environment, FileSystemLoader
 import orm
 from coroweb import add_routes, add_static
 
+import handlers
+
 # 选择jinja2作为模板, 初始化模板
 def init_jinja2(app, **kw):
     logging.info('init jinja2...')
     # 设置jinja2的Environment参数
     options = dict(
         autoescape = kw.get('autoescape', True),     # 自动转义xml/html的特殊字符
-        block_start_string = kw.get('block_start_string', '{%'),   # 代码块开始标志
+        block_start_string = kw.get('block_start_string', '{%'),   # 代码块开始标志(指令)
         block_end_string = kw.get('block_end_string', '%}'),
         variable_start_string = kw.get('variable_start_string', '{{'),  # 变量开始标志
         variable_end_string = kw.get('variable_end_string', '}}'),
@@ -115,7 +117,6 @@ def response_factory(app, handler):
                 return resp
             # 存在对应模板的,则将套用模板,用request handler的结果进行渲染
             else:
-                r["__user__"] = request.__user__  # 增加__user__,前端页面将依次来决定是否显示评论框
                 resp = web.Response(body=app["__templating__"].get_template(template).render(**r).encode("utf-8"))
                 resp.content_type = "text/html;charset=utf-8"
                 return resp

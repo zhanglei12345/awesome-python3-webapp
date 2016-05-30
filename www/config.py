@@ -41,7 +41,6 @@ def merge(defaults, override):
             r[k] = v
     return r
 
-
 # 将内建字典转换成自定义字典类型
 def toDict(d):
     D = Dict()
@@ -59,6 +58,6 @@ try:
 except ImportError:
     pass
 
-# 最后将混合好的配置字典专程自定义字典类型,方便取值与设值
+# 最后将混合好的配置字典转成自定义字典类型,方便取值与设值
 configs = toDict(configs)
 

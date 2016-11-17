@@ -1,20 +1,21 @@
-import logging; logging.basicConfig(level=logging.INFO)
-
-import asyncio, os, json, time
-from datetime import datetime
-
+import asyncio
 from aiohttp import web
 
-def index(request):
-    return web.Response(body=b'<h1>Awesome</h1>')
+async def index(request):
+    await asyncio.sleep(0.5)
+    return web.Response(body=b'<h1>Index</h1>')
 
-@asyncio.coroutine     #把一个generator标记为coroutine类型
-def init(loop):
+async def hello(request):
+    await asyncio.sleep(0.5)
+    text = '<h1>hello, %s!</h1>' % request.match_info['name']
+    return web.Response(body=text.encode('utf-8'))
+
+async def init(loop):
     app = web.Application(loop=loop)
     app.router.add_route('GET', '/', index)
-    srv = yield from loop.create_server(app.make_handler(), '127.0.0.1', 9000)   
-    #yield from语法可以让我们方便地调用另一个generator,在此期间，主线程并未等待，而是去执行EventLoop中其他可以执行的coroutine了
-    logging.info('server started at http://127.0.0.1:9000...')
+    app.router.add_route('GET', '/hello/{name}', hello)
+    srv = await loop.create_server(app.make_handler(), '127.0.0.1', 9000)
+    print('Server started at http://127.0.0.1:9000...')
     return srv
 
 # 获取EventLoop:

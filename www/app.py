@@ -47,47 +47,41 @@ def init_jinja2(app, **kw):
 # 以下是一些middleware(中间件), 可以在url处理函数处理前后对url进行处理
 
 # 在处理请求之前,先记录日志
-@asyncio.coroutine
-def logger_factory(app, handler):
-    @asyncio.coroutine
-    def logger(request):
+async def logger_factory(app, handler):
+    async def logger(request):
         # 记录日志,包括http method, 和path
         logging.info("Request: %s %s" % (request.method, request.path))
         # 日志记录完毕之后, 调用传入的handler继续处理请求
-        return (yield from handler(request))
+        return (await handler(request))
     return logger
 
 # 解析数据
-@asyncio.coroutine
-def data_factory(app, handler):
-    @asyncio.coroutine
-    def parse_data(request):
+async def data_factory(app, handler):
+    async def parse_data(request):
         # 解析数据是针对post方法传来的数据,若http method非post,将跳过,直接调用handler处理请求
         if request.method == "POST":
             # content_type字段表示post的消息主体的类型, 以application/json打头表示消息主体为json
             # request.json方法,读取消息主题,并以utf-8解码
             # 将消息主体存入请求的__data__属性
             if request.content_type.startswith("application/json"):
-                request.__data__ = yield from request.json()
+                request.__data__ = await request.json()
                 logging.info("request json: %s" % str(request.__data__))
             # content type字段以application/x-www-form-urlencodeed打头的,是浏览器表单
             # request.post方法读取post来的消息主体,即表单信息
             elif request.content_type.startswith("application/x-www-form-urlencoded"):
-                request.__data__ = yield from request.post()
+                request.__data__ = await request.post()
                 logging.info("request form: %s" % str(request.__data__))
         # 调用传入的handler继续处理请求
-        return (yield from handler(request))
+        return (await handler(request))
     return parse_data
 
 # 上面factory是在url处理函数之前先对请求进行了处理,以下则在url处理函数之后进行处理
 # 其将request handler的返回值转换为web.Response对象
-@asyncio.coroutine
-def response_factory(app, handler):
-    @asyncio.coroutine
-    def response(request):
+async def response_factory(app, handler):
+    async def response(request):
         logging.info("Response handler...")
         # 调用handler来处理url请求,并返回响应结果
-        r = yield from handler(request)
+        r = await handler(request)
         # 若响应结果为StreamResponse,直接返回
         # StreamResponse是aiohttp定义response的基类,即所有响应类型都继承自该类
         # StreamResponse主要为流式数据而设计
@@ -155,10 +149,9 @@ def datetime_filter(t):
     return u"%s年%s月%s日" % (dt.year, dt.month, dt.day)
 
 # 初始化
-@asyncio.coroutine
-def init(loop):
+async def init(loop):
     # 创建全局数据库连接池
-    yield from orm.create_pool(loop = loop, host="127.0.0.1", port = 3306, user = "www-data", password = "www-data", db = "awesome", autocommit = True)
+    await orm.create_pool(loop = loop, host="127.0.0.1", port = 3306, user = "www-data", password = "www-data", db = "awesome", autocommit = True)
     # 创建web应用,
     app = web.Application(loop = loop, middlewares=[logger_factory, response_factory]) # 创建一个循环类型是消息循环的web应用对象
     # 设置模板为jiaja2, 并以时间为过滤器
@@ -168,7 +161,7 @@ def init(loop):
     # 将当前目录下的static目录将如app目录
     add_static(app)
     # 调用子协程:创建一个TCP服务器,绑定到"127.0.0.1:9000"socket,并返回一个服务器对象
-    srv = yield from loop.create_server(app.make_handler(), "127.0.0.1", 9000)
+    srv = await loop.create_server(app.make_handler(), "127.0.0.1", 9000)
     logging.info("server started at http://127.0.0.1:9000")
     return srv
 

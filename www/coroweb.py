@@ -31,6 +31,8 @@ def post(path):
         return wrapper
     return decorator
 
+#命名的关键字参数是为了限制调用者可以传入的参数名，同时可以提供默认值。
+#定义命名的关键字参数在没有可变参数的情况下不要忘了写分隔符*，否则定义的将是位置参数。
 # 获取函数的值为空的命名关键字
 def get_required_kw_args(fn):
     args = []
@@ -78,37 +80,31 @@ def has_request_arg(fn):
 
 #浏览器首先向服务器发送HTTP请求:GET仅请求资源，POST会附带用户数据,路径，域名,如果是POST，那么请求还包括一个Body，包含用户数据。
 #服务器向浏览器返回HTTP响应：响应代码（200表示成功，3xx表示重定向，4xx表示客户端发送的请求有错误，5xx表示服务器端处理时发生了错误）；
-			     #响应类型(Content-Type)
-			     #Body(网页的HTML源码就在Body中)
+#响应类型(Content-Type)
+#Body(网页的HTML源码就在Body中)
 #HTTP格式:每个Header一行一个，换行符是\r\n.Header和Body通过\r\n\r\n来分隔
 
 # 定义RequestHandler类,封装url处理函数
 # RequestHandler的目的是从url函数中分析需要提取的参数,从request中获取必要的参数
 # 调用url参数,将结果转换为web.response
 class RequestHandler(object):
-
     def __init__(self, app, fn):
         self._app = app # web application
         self._func = fn # handler
-
         # 以下即为上面定义的一些判断函数与获取函数
-        self._has_request_arg = has_request_arg(fn)
-        self._has_var_kw_arg = has_var_kw_arg(fn)
-        self._has_named_kw_args = has_named_kw_args(fn)
-        self._named_kw_args = get_named_kw_args(fn)
-        self._required_kw_args = get_required_kw_args(fn)
-
+        self._has_request_arg = has_request_arg(fn)         #是否有request关键字
+        self._has_var_kw_arg = has_var_kw_arg(fn)           #是否带有关键字参数
+        self._has_named_kw_args = has_named_kw_args(fn)     #是否带有命名关键字参数
+        self._named_kw_args = get_named_kw_args(fn)         #获取命名关键字参数
+        self._required_kw_args = get_required_kw_args(fn)   #获取函数的值为空的命名关键字
 
     # 定义了__call__,则其实例可以被视为函数
     # 此处参数为request
-    @asyncio.coroutine
-    def __call__(self, request):
-
+    async def __call__(self, request):
         kw = None # 设不存在关键字参数
 
         # 存在关键字参数/命名关键字参数
         if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
-
             # http method 为 post的处理
             if request.method == "POST":
                 # http method 为post, 但request的content type为空, 返回丢失信息
@@ -118,19 +114,18 @@ class RequestHandler(object):
                 # 以下为检查post请求的content type字段
                 # application/json表示消息主体是序列化后的json字符串
                 if ct.startswith("application/json"):
-                    params = yield from request.json() # request.json方法的作用是读取request body, 并以json格式解码
+                    params = await request.json() # request.json方法的作用是读取request body, 并以json格式解码
                     if not isinstance(params, dict): # 解码得到的参数不是字典类型, 返回提示信息
                         return web.HTTPBadRequest("JSON body must be object.")
                     kw = params # post, content type字段指定的消息主体是json字符串,且解码得到参数为字典类型的,将其赋给变量kw
                 # 以下2种content type都表示消息主体是表单
                 elif ct.startswith("application/x-www-form-urlencoded") or ct.startswith("multipart/form-data"):
                     # request.post方法从request body读取POST参数,即表单信息,并包装成字典赋给kw变量
-                    params = yield from request.post()
+                    params = await request.post()
                     kw = dict(**params)
                 else:
                     # 此处我们只处理以上三种post 提交数据方式
                     return web.HTTPBadRequest("Unsupported Content-Type: %s" % request.content_type)
-
             # http method 为 get的处理
             if request.method == "GET":
                 # request.query_string表示url中的查询字符串
@@ -170,7 +165,7 @@ class RequestHandler(object):
 
         # 以下调用handler处理,并返回response.
         try:
-            r = yield from self._func(**kw)
+            r = await self._func(**kw)
             return r
         except APIError as e:
             return dict(error = e.error, data = e.data, message = e.message)

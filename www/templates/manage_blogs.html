@@ -15,7 +15,7 @@ function initVM(data) {
         },
         methods: {
             edit_blog: function (blog) {
-                location.assign('/manage/blogs/edit?id=' + blog.id);
+                location.assign('/manage/blogs/modify/' + blog.id);
             },
             delete_blog: function (blog) {
                 if (confirm('确认要删除“' + blog.name + '”？删除后不可恢复！')) {

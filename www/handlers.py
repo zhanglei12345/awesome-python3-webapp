@@ -8,12 +8,17 @@ from models import User, Comment, Blog, next_id
 from apis import APIValueError, APIResourceNotFoundError, Page
 
 from config import configs
-
+import markdown2
 # 如果一个URL返回的不是HTML，而是机器能直接解析的数据，这个URL就可以看成是一个Web API。
 # 由于API就是把Web App的功能全部封装了，所以，通过API操作数据，可以极大地把前端和后端的代码隔离，使得后端代码易于测试，前端代码编写更简单。
 
 COOKIE_NAME = 'awesession'
+# 将配置中的默认字典类型转换为自定义字典类型，可通过a.b进行访问
 _COOKIE_KEY = configs.session.secret
+
+def text2html(text):
+    lines = map(lambda s: '<p>%s</p>' % s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'), filter(lambda s: s.strip() != '', text.split('\n')))
+    return ''.join(lines)
 
 #@get('/')
 #async def index(request):
@@ -39,9 +44,11 @@ async def cookie2user(cookie_str):
     '''
     Parse cookie and load user if cookie is valid.
     '''
+    logging.info('invalid :[%s]' % cookie_str)
     if not cookie_str:
         return None
     try:
+        #Return a list of the words in the string
         L = cookie_str.split('-')
         if len(L) != 3:
             return None
@@ -62,16 +69,38 @@ async def cookie2user(cookie_str):
         return None
 
 # 首页
+#@get('/')
+#def index(request):
+#    summary = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+#    blogs = [
+#        Blog(id='1', name='Test Blog', summary=summary, created_at=time.time()-120),
+#        Blog(id='2', name='Something New', summary=summary, created_at=time.time()-3600),
+#        Blog(id='3', name='Learn Swift', summary=summary, created_at=time.time()-7200)
+#    ]
+#    return {
+#        '__template__': 'blogs.html',
+#        'blogs': blogs
+#    }
+
+# 首页
 @get('/')
-def index(request):
-    summary = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
-    blogs = [
-        Blog(id='1', name='Test Blog', summary=summary, created_at=time.time()-120),
-        Blog(id='2', name='Something New', summary=summary, created_at=time.time()-3600),
-        Blog(id='3', name='Learn Swift', summary=summary, created_at=time.time()-7200)
-    ]
+async def index(*, page='1'):
+    # 获取到要展示的博客页数是第几页
+    page_index = get_page_index(page)
+    # 查找博客表里的条目数
+    num = await Blog.findNumber('count(id)')
+    # 通过Page类来计算当前页的相关信息
+    page = Page(num, page_index)
+    # 如果表里没有条目，则不需要显示
+    if num == 0:
+        blogs = []
+    else:
+        # 否则，根据计算出来的offset(取的初始条目index)和limit(取的条数)，来取出条目
+        blogs = await Blog.findAll(orderBy='created_at desc', limit=(page.offset, page.limit))
+        # 返回给浏览器
     return {
         '__template__': 'blogs.html',
+        'page': page,
         'blogs': blogs
     }
 
@@ -133,6 +162,18 @@ async def authenticate(*, email, passwd):
 #    for u in users:
 #        u.passwd = '******'
 #    return dict(users=users)
+
+@get('/api/users')
+async def api_get_users(*, page='1'):
+    page_index = get_page_index(page)
+    num = await User.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, users=())
+    users = await User.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    for u in users:
+        u.passwd = '******'
+    return dict(page=p, users=users)
 
 # 对正则表达式的模式进行编译以加快匹配速度
 _RE_EMAIL = re.compile(r'^[a-z0-9\.\-\_]+\@[a-z0-9\-\_]+(\.[a-z0-9\-\_]+){1,4}$')
@@ -225,4 +266,134 @@ def manage_blogs(*, page='1'):
     return {
         '__template__': 'manage_blogs.html',
         'page_index': get_page_index(page)
+    }
+
+# 评论管理页面
+@get('/manage/')
+def manage():
+    return 'redirect:/manage/comments'
+
+# 查看所有评论
+@get('/manage/comments')
+def manage_comments(*, page='1'):
+    return {
+        '__template__': 'manage_comments.html',
+        'page_index': get_page_index(page)
+    }
+
+# 根据page获取评论
+@get('/api/comments')
+async def api_comments(*, page='1'):
+    page_index = get_page_index(page)
+    num = await Comment.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, comments=())
+    comments = await Comment.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, comments=comments)
+
+@post('/api/blogs/{id}/comments')
+async def api_create_comment(id, request, *, content):
+    # 对某个博客发表评论
+    user = request.__user__
+    # 必须为登陆状态下，评论
+    if user is None:
+        raise APIPermissionError('content')
+    # 评论不能为空
+    if not content or not content.strip():
+        raise APIValueError('content')
+    # 查询一下博客id是否有对应的博客
+    blog = await Blog.find(id)
+    # 没有的话抛出错误
+    if blog is None:
+        raise APIResourceNotFoundError('Blog')
+    # 构建一条评论数据
+    comment = Comment(blog_id=blog.id, user_id=user.id, user_name=user.name,
+    user_image=user.image, content=content.strip())
+    # 保存到评论表里
+    await comment.save()
+    return comment
+
+@post('/api/comments/{id}/delete')
+async def api_delete_comments(id, request):
+    # 删除某个评论
+    logging.info(id)
+    # 先检查是否是管理员操作，只有管理员才有删除评论权限
+    check_admin(request)
+    # 查询一下评论id是否有对应的评论
+    c = await Comment.find(id)
+    # 没有的话抛出错误
+    if c is None:
+        raise APIResourceNotFoundError('Comment')
+    # 有的话删除
+    await c.remove()
+    return dict(id=id)
+
+@get('/blog/{id}')
+async def get_blog(id):
+    # 根据博客id查询该博客信息
+    blog = await Blog.find(id)
+    # 根据博客id查询该条博客的评论
+    comments = await Comment.findAll('blog_id=?', [id], orderBy='created_at desc')
+    # markdown2是个扩展模块，这里把博客正文和评论套入到markdonw2中
+    for c in comments:
+        c.html_content = text2html(c.content)
+    blog.html_content = markdown2.markdown(blog.content)
+    # 返回页面
+    return {
+        '__template__': 'blog.html',
+        'blog': blog,
+        'comments': comments
+    }
+
+@get('/api/blogs/{id}')
+async def api_get_blog(*, id):
+    # 获取某条博客的信息
+    blog = await Blog.find(id)
+    return blog
+
+@post('/api/blogs/{id}/delete')
+async def api_delete_blog(id, request):
+    # 删除一条博客
+    logging.info("删除博客的博客ID为：%s" % id)
+    # 先检查是否是管理员操作，只有管理员才有删除评论权限
+    check_admin(request)
+    # 查询一下评论id是否有对应的评论
+    b = await Blog.find(id)
+    # 没有的话抛出错误
+    if b is None:
+        raise APIResourceNotFoundError('Comment')
+    # 有的话删除
+    await b.remove()
+    return dict(id=id)
+
+@post('/api/blogs/modify')
+async def api_modify_blog(request, *, id, name, summary, content):
+    # 修改一条博客
+    logging.info("修改的博客的博客ID为：%s", id)
+    # name，summary,content 不能为空
+    if not name or not name.strip():
+        raise APIValueError('name', 'name cannot be empty')
+    if not summary or not summary.strip():
+        raise APIValueError('summary', 'summary cannot be empty')
+    if not content or not content.strip():
+        raise APIValueError('content', 'content cannot be empty')
+
+    # 获取指定id的blog数据
+    blog = await Blog.find(id)
+    blog.name = name
+    blog.summary = summary
+    blog.content = content
+
+    # 保存
+    await blog.update()
+    return blog
+
+@get('/manage/blogs/modify/{id}')
+def manage_modify_blog(id):
+    # 修改博客的页面
+    return {
+        '__template__': 'manage_blog_modify.html',
+        'id': id,
+        'action': '/api/blogs/modify'
     }

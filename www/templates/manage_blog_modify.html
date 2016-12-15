@@ -1,15 +1,13 @@
 {% extends '__base__.html' %}
 
-{% block title %}编辑日志{% endblock %}
+{% block title %}修改日志{% endblock %}
 
 {% block beforehead %}
 
 <script>
-
 var
     ID = '{{ id }}',
-    action = '{{ action }}';
-
+    action = '{{ action }}'; //在handlers处理函数的返回值中定义
 function initVM(blog) {
     var vm = new Vue({
         el: '#vm',
@@ -31,7 +29,6 @@ function initVM(blog) {
     });
     $('#vm').show();
 }
-
 $(function () {
     if (ID) {
         getJSON('/api/blogs/' + ID, function (err, blog) {
@@ -51,7 +48,6 @@ $(function () {
         });
     }
 });
-
 </script>
 
 {% endblock %}

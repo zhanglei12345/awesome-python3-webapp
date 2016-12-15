@@ -4,7 +4,8 @@ from urllib import parse
 from aiohttp import web
 from apis import APIError
 
-# 定义了一个装饰器
+# 定义了一个装饰器(在代码运行期间动态增加功能的方式)
+# decorator本身需要传入参数，需要编写一个返回decorator的高阶函数,返回值最终是wrapper函数
 # 将一个函数映射为一个URL处理函数
 def get(path):
     '''define decorator @get('/path')'''
@@ -33,6 +34,7 @@ def post(path):
 
 #命名的关键字参数是为了限制调用者可以传入的参数名，同时可以提供默认值。
 #定义命名的关键字参数在没有可变参数的情况下不要忘了写分隔符*，否则定义的将是位置参数。
+
 # 获取函数的值为空的命名关键字
 def get_required_kw_args(fn):
     args = []
@@ -100,9 +102,12 @@ class RequestHandler(object):
 
     # 定义了__call__,则其实例可以被视为函数
     # 此处参数为request
+    # A request handler can be any callable that accepts a Request instance as its only argument
+    # 例如： def handler(request):
+    #           return web.Response()
+    #       app.router.add_route('*', '/path', handler)
     async def __call__(self, request):
         kw = None # 设不存在关键字参数
-
         # 存在关键字参数/命名关键字参数
         if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
             # http method 为 post的处理
@@ -121,7 +126,9 @@ class RequestHandler(object):
                 # 以下2种content type都表示消息主体是表单
                 elif ct.startswith("application/x-www-form-urlencoded") or ct.startswith("multipart/form-data"):
                     # request.post方法从request body读取POST参数,即表单信息,并包装成字典赋给kw变量
+                    # A MultiDict with the parsed form data from POST or PUT requests.
                     params = await request.post()
+                    # MultiDict saves all values for a key as a list
                     kw = dict(**params)
                 else:
                     # 此处我们只处理以上三种post 提交数据方式
@@ -129,17 +136,21 @@ class RequestHandler(object):
             # http method 为 get的处理
             if request.method == "GET":
                 # request.query_string表示url中的查询字符串
-                # 比如"https://www.google.com/#newwindow=1&q=google",其中q=google就是query_string
                 qs = request.query_string
                 if qs:
                     kw = dict() # 原来为None的kw变成字典
+                    # parse.parse_qs(qs, True)
+                    # Data are returned as a dictionary. The dictionary keys are the unique query variable names and the values are lists of values for each name.
                     for k, v in parse.parse_qs(qs, True).items(): # 解析query_string,以字典的形如储存到kw变量中
+                        # v[0]取lists中的第一个值
                         kw[k] = v[0]
-        if kw is None: # 经过以上处理, kw仍未空,即以上全部不匹配,则获取请求的abstract math info(抽象数学信息),好吧,我也不知道这是什么鬼东西,并以字典形式存入kw
+        if kw is None: # 经过以上处理, kw仍为空,即以上全部不匹配
+            # 理解request.match_info??
             kw = dict(**request.match_info)
         else:
             # kw 不为空,且requesthandler只存在命名关键字的,则只取命名关键字参数名放入kw
             if not self._has_var_kw_arg and self._named_kw_args:
+                # 删除所有没有命名的关键字参数
                 copy = dict()
                 for name in self._named_kw_args:
                     if name in kw:
@@ -170,7 +181,10 @@ class RequestHandler(object):
         except APIError as e:
             return dict(error = e.error, data = e.data, message = e.message)
 
+# 添加静态页面的路径
 def add_static(app):
+    # __file__
+    logging.info('__file__ :[%s]' % __file__)
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
     app.router.add_static('/static/', path)
     logging.info('add static %s => %s' % ('/static/', path))
@@ -185,8 +199,11 @@ def add_route(app, fn):
     # 将非协程或生成器的函数变为一个协程.
     if not asyncio.iscoroutinefunction(fn) and not inspect.isgeneratorfunction(fn):
         fn = asyncio.coroutine(fn)
+    # url 处理函数
     logging.info('add route %s %s => %s(%s)' % (method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
     # 注册request handler
+    # app.router.add_route('*', '/path', all_handler)
+    # RequestHandler定义了__call__,其实例可以被视为函数
     app.router.add_route(method, path, RequestHandler(app, fn))
 
 # 自动注册所有请求处理函数
@@ -194,12 +211,16 @@ def add_routes(app, module_name):
     n = module_name.rfind('.')   # -1 表示未找到,即module_name表示的模块直接导入
     if n == (-1):
         mod = __import__(module_name, globals(), locals())
-        # __import__()的作用同import语句,python官网说强烈不建议这么做
+        logging.info('globals = %s', globals()['__name__'])
+        # __import__()的作用同import语句,比如希望加载某个文件夹下的所有模块，但是其下的模块名称又会经常变化时，就可以使用这个函数动态加载所有模块了
         # __import__(name, globals=None, locals=None, fromlist=(), level=0)
+        # 可选参数默认为globals(),locals(),[],0
         # name -- 模块名
         # globals, locals -- determine how to interpret the name in package context
         # fromlist -- name表示的模块的子模块或对象名列表
         # level -- 绝对导入还是相对导入,默认值为0, 即使用绝对导入,正数值表示相对导入时,导入目录的父目录的层数
+        # 例如：__import__('os',globals(),locals(),['path','pip']) 等价于from os import path,pip
+        #       __import__('os')  等价于 import os
     else:
         # 以下语句表示, 先用__import__表达式导入模块以及子模块
         # 再通过getattr()方法取得子模块名, 如datetime.datetime

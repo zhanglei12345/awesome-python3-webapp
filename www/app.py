@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging; logging.basicConfig(level=logging.INFO)
 
 import asyncio, os, json, time
@@ -55,16 +56,19 @@ async def logger_factory(app, handler):
         return (await handler(request))
     return logger
 
-# 利用middle在处理URL之前，把cookie解析出来，并将登录用户绑定到request对象上
+# 利用middle在处理URL之前，把cookie解析出来，并将登录用户绑定到request对象上,验证当前这个请求用户是否在登录状态下，或是否伪造的sha1
 async def auth_factory(app, handler):
     async def auth(request):
         logging.info('check user: %s %s' % (request.method, request.path))
         request.__user__ = None
+        # 获取cookies
         cookie_str = request.cookies.get(COOKIE_NAME)
         if cookie_str:
+            # 解密cookie:
             user = await cookie2user(cookie_str)
             if user:
                 logging.info('set current user: %s' % user.email)
+                # user存在则绑定到request上，说明当前用户是合法的
                 request.__user__ = user
         if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
             return web.HTTPFound('/signin')
@@ -77,7 +81,7 @@ async def data_factory(app, handler):
         # 解析数据是针对post方法传来的数据,若http method非post,将跳过,直接调用handler处理请求
         if request.method == "POST":
             # content_type字段表示post的消息主体的类型, 以application/json打头表示消息主体为json
-            # request.json方法,读取消息主题,并以utf-8解码
+            # request.json方法,读取消息主体
             # 将消息主体存入请求的__data__属性
             if request.content_type.startswith("application/json"):
                 request.__data__ = await request.json()
@@ -129,6 +133,7 @@ async def response_factory(app, handler):
             else:
                 #logging.info("request...%s" % request)
                 r['__user__'] = request.__user__
+                # ??
                 resp = web.Response(body=app["__templating__"].get_template(template).render(**r).encode("utf-8"))
                 resp.content_type = "text/html;charset=utf-8"
                 return resp
@@ -150,9 +155,11 @@ async def response_factory(app, handler):
         return resp
     return response
 
+# 自定义jinja2 过滤器,举例 http://www.cnblogs.com/lewis617/p/5184621.html
 # 时间过滤器
 def datetime_filter(t):
     # 定义时间差
+    # time.time() 返回当前时间的时间戳（1970纪元后经过的浮点秒数）。
     delta = int(time.time()-t)
     # 针对时间分类
     if delta < 60:
@@ -163,7 +170,10 @@ def datetime_filter(t):
         return u"%s小时前" % (delta // 3600)
     if delta < 604800:
         return u"%s天前" % (delta // 86400)
+    # >>> datetime.fromtimestamp(time.time())
+    # datetime.datetime(2016, 12, 2, 23, 25, 26, 950915)
     dt = datetime.fromtimestamp(t)
+    # Unicode string
     return u"%s年%s月%s日" % (dt.year, dt.month, dt.day)
 
 # 初始化

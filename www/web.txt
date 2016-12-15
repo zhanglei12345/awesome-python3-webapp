@@ -4,3 +4,4 @@ Web应用的本质:
     3.服务器把HTML文档作为HTTP响应的Body发送给浏览器；
     4.浏览器收到HTTP响应，从HTTP Body取出HTML文档并显示。
 
+test

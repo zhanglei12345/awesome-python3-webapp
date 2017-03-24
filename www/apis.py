@@ -12,7 +12,7 @@ class Page(object):
     # item_count：要显示的条目数量
     # page_index：要显示的是第几页
     # page_size：每页的条目数量，为了方便测试现在显示为2条
-    def __init__(self, item_count, page_index=1, page_size=10):
+    def __init__(self, item_count, page_index=1, page_size=2):
         self.item_count = item_count
         self.page_size = page_size
         # 计算出应该有多少页才能显示全部的条目
@@ -28,7 +28,7 @@ class Page(object):
             self.offset = self.page_size * (page_index - 1)
             # 这页能显示的数量
             self.limit = self.page_size
-        # 这页后面是否还有下一页
+        # 这页后面是否还有下一页,True或False
         self.has_next = self.page_index < self.page_count
         # 这页之前是否还有上一页
         self.has_previous = self.page_index > 1
@@ -68,5 +68,3 @@ class APIPermissionError(APIError):
     '''
     def __init__(self, message=''):
         super(APIPermissionError, self).__init__('permission:forbidden', 'permission', message)
-
-

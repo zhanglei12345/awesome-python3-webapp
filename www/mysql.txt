@@ -1,0 +1,12 @@
+1.root用户登录：
+	mysql -u root -p
+2.显示数据库列表:
+	show databases;
+3.切换数据库：
+	use 数据库名;
+4.显示指定数据库的所有表:
+	show tables;
+5.显示数据表的属性，属性类型，主键信息 ，是否为 NULL，默认值等其他信息:
+	show columns from 数据表;
+6.显示数据表的详细索引信息，包括PRIMARY KEY（主键）:
+	show index from 数据表;

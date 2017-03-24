@@ -44,7 +44,8 @@ async def cookie2user(cookie_str):
     '''
     Parse cookie and load user if cookie is valid.
     '''
-    logging.info('invalid :[%s]' % cookie_str)
+    logging.info('cookie_str :[%s]' % cookie_str)
+
     if not cookie_str:
         return None
     try:
@@ -151,6 +152,7 @@ async def authenticate(*, email, passwd):
     # authenticate ok, set cookie:
     r = web.Response()
     r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), max_age=86400, httponly=True)
+    # web间数据传递的密码隐藏为******
     user.passwd = '******'
     r.content_type = 'application/json'
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
@@ -335,7 +337,7 @@ async def get_blog(id):
     blog = await Blog.find(id)
     # 根据博客id查询该条博客的评论
     comments = await Comment.findAll('blog_id=?', [id], orderBy='created_at desc')
-    # markdown2是个扩展模块，这里把博客正文和评论套入到markdonw2中
+    # markdown2是个扩展模块，这里把博客正文和评论套入到markdon中
     for c in comments:
         c.html_content = text2html(c.content)
     blog.html_content = markdown2.markdown(blog.content)

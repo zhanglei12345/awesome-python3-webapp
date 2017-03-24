@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import logging; logging.basicConfig(level=logging.INFO)
+import logging; logging.basicConfig(level=logging.INFO)   # 默认级别设置为INFO
 
 import asyncio, os, json, time
 from datetime import datetime
@@ -36,6 +36,7 @@ def init_jinja2(app, **kw):
     # 初始化jinja2环境, options参数,之前已经进行过设置
     # 加载器负责从指定位置加载模板, 此处选择FileSystemLoader,顾名思义就是从文件系统加载模板,前面我们已经设置了path
     env = Environment(loader=FileSystemLoader(path), **options)
+    # 在init函数中，init_jinja2(app, filters=dict(datetime=datetime_filter))
     filters = kw.get('filters', None)
     if filters is not None:
         for name, f in filters.items():
@@ -44,6 +45,7 @@ def init_jinja2(app, **kw):
     app['__templating__'] = env
 
 # 创建应用时,通过指定命名关键字为一些"middle factory"的列表可创建中间件Middleware
+# middleware的用处就在于把通用的功能从每个URL处理函数中拿出来，集中放到一个地方。
 # 每个middle factory接收2个参数,一个app实例,一个handler, 并返回一个新的handler
 # 以下是一些middleware(中间件), 可以在url处理函数处理前后对url进行处理
 
@@ -63,6 +65,7 @@ async def auth_factory(app, handler):
         request.__user__ = None
         # 获取cookies
         cookie_str = request.cookies.get(COOKIE_NAME)
+        logging.info('cookie_str: %s' % cookie_str)
         if cookie_str:
             # 解密cookie:
             user = await cookie2user(cookie_str)
@@ -95,13 +98,13 @@ async def data_factory(app, handler):
         return (await handler(request))
     return parse_data
 
-# 上面factory是在url处理函数之前先对请求进行了处理,以下则在url处理函数之后进行处理
 # 其将request handler的返回值转换为web.Response对象
 async def response_factory(app, handler):
     async def response(request):
-        logging.info("Response handler...")
-        # 调用handler来处理url请求,并返回响应结果
+        logging.info(" response handler...")
+        # 调用handler来处理url请求,并返回响应结果.这是RequestHandler的__call__方法起的作用。
         r = await handler(request)
+        logging.info(" request handler end...")
         # 若响应结果为StreamResponse,直接返回
         # StreamResponse是aiohttp定义response的基类,即所有响应类型都继承自该类
         # StreamResponse主要为流式数据而设计
@@ -121,7 +124,7 @@ async def response_factory(app, handler):
             resp = web.Response(body = r.encode("utf-8"))
             resp.content_type = "text/html;charset=utf-8"
             return resp
-        # 若响应结果为字典,则获取它的模板属性,此处为jinja2.env(见init_jinja2)
+        # 若响应结果为字典,则获取它的模板属性,此处为jinja2.env
         if isinstance(r, dict):
             template = r.get("__template__")
             # 若不存在对应模板,则将字典调整为json格式返回,并设置响应类型为json
@@ -155,8 +158,9 @@ async def response_factory(app, handler):
         return resp
     return response
 
-# 自定义jinja2 过滤器,举例 http://www.cnblogs.com/lewis617/p/5184621.html
-# 时间过滤器
+# 自定义jinja2 过滤器
+# 时间过滤器,把一个浮点数转换成日期字符串
+# 在模板里用法：<p class="uk-article-meta">发表于{{ blog.created_at|datetime }}</p>,datetime为过滤器的名字
 def datetime_filter(t):
     # 定义时间差
     # time.time() 返回当前时间的时间戳（1970纪元后经过的浮点秒数）。
